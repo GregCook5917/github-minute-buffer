@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  buffer-platform:
+    build: .
+    image: github-minute-buffer:latest
+    container_name: buffer-controller
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      # The webhook secret configured in your GitHub App or Repo Webhook settings
+      - GITHUB_WEBHOOK_SECRET=your_webhook_secret_here
+      # A PAT with 'repo' scope, or a GitHub App Installation Token for the Octokit client
+      - GITHUB_PAT=your_github_personal_access_token_here
+    volumes:
+      # CRITICAL: This allows the container's act/docker client to utilize the HOST machine's Docker daemon.
+      # This is known as Docker-out-of-Docker (DooD) and is essential for act to spin up workflow containers.
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
