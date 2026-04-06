@@ -2,6 +2,8 @@ require("dotenv").config();
 const express = require("express");
 const { Webhooks, createNodeMiddleware } = require("@octokit/webhooks");
 const { executePausedGitHubJob } = require("./engine");
+const { provisionWorkspace, cleanupWorkspace } = require("./workspace");
+const { approveEnvironmentGate } = require("./gatekeeper");
 
 const app = express();
 
@@ -26,17 +28,32 @@ webhooks.on("workflow_job", async ({ id, name, payload }) => {
   if (jobStatus === "queued" || jobStatus === "waiting") {
     console.log(`[Controller] Intercepted a paused job: ${jobName}`);
     
-    // TODO: Dynamic workspace provisioning.
-    // In production, we would git clone payload.repository.clone_url @ payload.workflow_job.head_sha
-    // into a temporary directory here.
-    const workspaceDir = __dirname; // Dummy path for now
+    const repositoryUrl = payload.repository.clone_url;
+    const commitSha = payload.workflow_job.head_sha;
+    const repoOwner = payload.repository.owner.login;
+    const repoName = payload.repository.name;
+    const runId = payload.workflow_job.run_id;
+    // We assume the environment is 'buffer-env' based on our setup
+    const environmentName = 'buffer-env';
     
-    // Offload the hard execution to our engine
-    const executionResult = await executePausedGitHubJob(workspaceDir, jobName);
-    
-    if (executionResult.success) {
-      console.log(`[Gatekeeper] Job completed successfully locally! Hitting GitHub API to approve the environment.`);
-      // TODO: Call Octokit REST API to approve the pending_deployments gate
+    let workspaceDir;
+    try {
+      // Dynamic workspace provisioning.
+      workspaceDir = provisionWorkspace(repositoryUrl, commitSha);
+      
+      // Offload the hard execution to our engine
+      const executionResult = await executePausedGitHubJob(workspaceDir, jobName);
+      
+      if (executionResult.success) {
+        console.log(`[Gatekeeper] Job completed successfully locally! Hitting GitHub API to approve the environment.`);
+        await approveEnvironmentGate(repoOwner, repoName, runId, environmentName);
+      }
+    } catch (err) {
+      console.error(`[Controller] Job execution failed:`, err);
+    } finally {
+      if (workspaceDir) {
+        cleanupWorkspace(workspaceDir);
+      }
     }
   }
 });
