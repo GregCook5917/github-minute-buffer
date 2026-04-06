@@ -1,0 +1,26 @@
+name: Multi-Stage Architecture (Buffer Routed)
+
+on:
+  pull_request:
+
+jobs:
+  heavy_compile:
+    name: Backend Compilation
+    runs-on: ubuntu-latest
+    # The Buffer Platform takes care of this step for "free"
+    environment: buffer-env
+    steps:
+      - uses: actions/checkout@v3
+      - name: Expensive Compile Step
+        run: |
+          echo "Compiling heavily for 30 minutes..."
+          echo "Done compiling!"
+
+  native_deployment:
+    name: Official Deployment
+    runs-on: ubuntu-latest
+    # Because of GitHub's native dependency graph, this job 
+    # will wait completely natively until the Buffer Platform approves the gate above.
+    needs: heavy_compile
+    steps:
+      - run: echo "Deploying the artifacts!"
